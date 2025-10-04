@@ -1,92 +1,95 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Student Attendance</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 2rem;
-    }
-    input, button {
-      padding: 10px;
-      font-size: 16px;
-      margin: 5px 0;
-    }
-    .student {
-      margin: 10px 0;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-  </style>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Student Attendance</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+      }
+      input,
+      button {
+        padding: 10px;
+        font-size: 16px;
+        margin: 5px 0;
+      }
+      .student {
+        margin: 10px 0;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Student Attendance</h2>
 
-<h2>Student Attendance</h2>
+    <label>Student ID:</label>
+    <input id="studentId" placeholder="Tap your ID" />
+    <button id="tapBtn">Tap</button>
 
-<label>Student ID:</label>
-<input id="studentId" placeholder="Tap your ID">
-<button id="tapBtn">Tap</button>
+    <div id="error" style="color: red"></div>
 
-<div id="error" style="color:red;"></div>
+    <h3>Tapped Students:</h3>
+    <div id="students"></div>
 
-<h3>Tapped Students:</h3>
-<div id="students"></div>
+    <button id="exportBtn">Export CSV</button>
 
-<button id="exportBtn">Export CSV</button>
+    <script>
+      const studentIdInput = document.getElementById("studentId");
+      const tapBtn = document.getElementById("tapBtn");
+      const studentsDiv = document.getElementById("students");
+      const errorDiv = document.getElementById("error");
+      const exportBtn = document.getElementById("exportBtn");
 
-<script>
-  const studentIdInput = document.getElementById('studentId');
-  const tapBtn = document.getElementById('tapBtn');
-  const studentsDiv = document.getElementById('students');
-  const errorDiv = document.getElementById('error');
-  const exportBtn = document.getElementById('exportBtn');
+      async function tapStudent() {
+        errorDiv.textContent = "";
+        const studentId = studentIdInput.value.trim();
+        if (!studentId) {
+          errorDiv.textContent = "Please enter a student ID.";
+          return;
+        }
 
-  async function tapStudent() {
-    errorDiv.textContent = '';
-    const studentId = studentIdInput.value.trim();
-    if (!studentId) {
-      errorDiv.textContent = 'Please enter a student ID.';
-      return;
-    }
+        tapBtn.disabled = true;
 
-    tapBtn.disabled = true;
+        try {
+          const res = await fetch("http://localhost:5000/api/tap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ studentId }),
+          });
 
-    try {
-      const res = await fetch('http://localhost:5000/api/tap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId })
+          const data = await res.json();
+
+          if (!res.ok) throw new Error(data.error || "Unknown error");
+
+          const div = document.createElement("div");
+          div.className = "student";
+          
+    const displayName = data.name || `Student ${studentId}`;
+
+          div.textContent = `${displayName} (ID: ${studentId})`;
+
+          studentsDiv.prepend(div);
+
+          studentIdInput.value = "";
+        } catch (err) {
+          errorDiv.textContent = err.message;
+        } finally {
+          tapBtn.disabled = false;
+        }
+      }
+
+      tapBtn.addEventListener("click", tapStudent);
+      studentIdInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") tapStudent();
       });
 
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Unknown error');
-
-      const div = document.createElement('div');
-      div.className = 'student';
-      div.textContent = `${data.name || data.email} (ID: ${studentId})`;
-      studentsDiv.prepend(div);
-
-      studentIdInput.value = '';
-    } catch (err) {
-      errorDiv.textContent = err.message;
-    } finally {
-      tapBtn.disabled = false;
-    }
-  }
-
-  tapBtn.addEventListener('click', tapStudent);
-  studentIdInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') tapStudent();
-  });
-
-  exportBtn.addEventListener('click', () => {
-    window.open('http://localhost:5000/api/export');
-  });
-</script>
-
-</body>
+      exportBtn.addEventListener("click", () => {
+        window.open("http://localhost:5000/api/export");
+      });
+    </script>
+  </body>
 </html>

@@ -1,49 +1,45 @@
 function sanitize(input) {
   return input
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9._-]/gi, '')
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9._-]/gi, "")
     .toLowerCase();
 }
 
-function deriveUsername(email, strategy = 'dot') {
-  const [local] = email.split('@');
-  const [first, last] = local.split('_');
-  const firstClean = sanitize(first || '');
-  const lastClean = sanitize(last || '');
+function deriveUsername(email, strategy = "dot") {
+  const [local] = email.split("@");
+  const [first, last] = local.split("_");
+  const firstClean = sanitize(first || "");
+  const lastClean = sanitize(last || "");
 
   switch (strategy) {
-    case 'dot':
-      return [firstClean, lastClean].filter(Boolean).join('.');
-    case 'concat':
+    case "dot":
+      return [firstClean, lastClean].filter(Boolean).join(".");
+    case "concat":
       return `${firstClean}${lastClean}`;
-    case 'firstInitialLast':
+    case "firstInitialLast":
       return `${firstClean.charAt(0)}${lastClean}`;
-    case 'lastFirstInitial':
+    case "lastFirstInitial":
       return `${lastClean}${firstClean.charAt(0)}`;
     default:
-      return [firstClean, lastClean].filter(Boolean).join('.');
+      return [firstClean, lastClean].filter(Boolean).join(".");
   }
 }
 
 function capitalize(word) {
-  if (!word) return '';
+  if (!word) return "";
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
 function prettifyNamePart(part) {
-  return (part || '')
-    .split('-')
-    .map(capitalize)
-    .join('-');
+  return (part || "").split("-").map(capitalize).join("-");
 }
 
 function deriveDisplayName(email) {
-  const [local] = email.split('@');
-  const [firstRaw, lastRaw] = local.split('_');
-  const first = prettifyNamePart(firstRaw);
-  const last = prettifyNamePart(lastRaw);
-  return [first, last].filter(Boolean).join(' ');
+  const [local] = email.split("@");
+  const nameParts = local.split("_");
+  const formattedParts = nameParts.map((part) => prettifyNamePart(part));
+  return formattedParts.filter(Boolean).join(" ");
 }
 
 module.exports = { deriveUsername, deriveDisplayName };

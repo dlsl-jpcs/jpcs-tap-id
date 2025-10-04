@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&display=swap');
+@import "tailwindcss";
+
+:root {
+  font-family: "Figtree", Avenir, Helvetica, Arial, sans-serif;
+  --dark-green: #005A26;
+  --light-green: #0DCC58;
+}
+
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+@theme inline {
+  --color-dark-green: var(--dark-green);
+  --color-light-green: var(--light-green);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+          width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+          background: rgba(34, 197, 94, 0.3);
+          border-radius: 3px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+          background: rgba(34, 197, 94, 0.5);
+        }
+
+        /* Firefox */
+        .scrollbar-thin {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(34, 197, 94, 0.3) transparent;
+        }

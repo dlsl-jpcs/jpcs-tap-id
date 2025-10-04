@@ -61,9 +61,10 @@ async function fetchStudentInfo(studentId) {
 
     return {
       email: data.email_address.toLowerCase(),
-      name: data.name || null,
-      photo: data.photo || null
+      name: data.name || undefined,
+      photo: data.photo || undefined,
     };
+
   } catch (error) {
     console.error('DLSL API request failed:', error.message);
     if (error.response) {
