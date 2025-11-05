@@ -1,6 +1,9 @@
 {
   "name": "dlsl-student-api",
   "version": "1.0.0",
+  "engines": {
+  "node": "18.x"
+},
   "private": true,
   "description": "API to fetch DLSL student email from portal and derive a username for a web-game",
   "main": "server.js",

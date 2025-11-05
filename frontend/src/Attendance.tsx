@@ -3,7 +3,7 @@ import { useLocalStorage } from "./useLocalStorage";
 import EventModal from "./EventModal";
 import ImportModal from "./ImportModal";
 
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL = "http://localhost:10000/api";
 
 interface Student {
   id: string;
@@ -270,7 +270,7 @@ const Attendance: React.FC = () => {
   return (
     <div className="relative min-h-screen w-full p-2 mx-auto bg-[#141414]">
       <h1 className="mx-auto text-center text-3xl text-light-green font-bold mt-4 ">
-        <h2>{eventName}</h2>
+        {eventName}
       </h1>
 
       <div className="text-center mb-4 text-slate-50 font-bold">
