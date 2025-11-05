@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import EventModal from "./EventModal";
 import ImportModal from "./ImportModal";
