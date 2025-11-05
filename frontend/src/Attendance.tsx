@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import EventModal from "./EventModal";
 import ImportModal from "./ImportModal";
 
 const API_BASE_URL = "https://jpcs-attendance-server.onrender.com/api";
+/* "http://localhost:10000/api" */
 
 interface Student {
   id: string;
@@ -20,12 +21,10 @@ interface RecentTap {
   isRegistered?: boolean;
 }
 
-interface ApiResponse {
+interface ApiStudentInfo {
   id: string;
   name: string;
   email: string;
-  timestamp?: string;
-  error?: string;
 }
 
 const Attendance: React.FC = () => {
@@ -52,6 +51,12 @@ const Attendance: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const isGlobalInputRef = useRef<boolean>(false);
 
+  // Optional: Unique device ID
+  const [deviceId] = useLocalStorage(
+    "device-id",
+    `device-${Math.random().toString(36).substr(2, 9)}`
+  );
+
   useEffect(() => {
     const handleGlobalKeyPress = (e: KeyboardEvent): void => {
       if (
@@ -71,16 +76,12 @@ const Attendance: React.FC = () => {
         }
 
         setStudentId((prev) => prev + e.key);
-
         e.preventDefault();
       }
     };
 
     document.addEventListener("keydown", handleGlobalKeyPress);
-
-    return () => {
-      document.removeEventListener("keydown", handleGlobalKeyPress);
-    };
+    return () => document.removeEventListener("keydown", handleGlobalKeyPress);
   }, [showEventModal, showImportModal]);
 
   useEffect(() => {
@@ -88,16 +89,12 @@ const Attendance: React.FC = () => {
       const timer = setTimeout(() => {
         isGlobalInputRef.current = false;
       }, 0);
-
       return () => clearTimeout(timer);
     }
   }, [studentId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    if (isGlobalInputRef.current) {
-      return;
-    }
-
+    if (isGlobalInputRef.current) return;
     setStudentId(e.target.value);
   };
 
@@ -105,50 +102,49 @@ const Attendance: React.FC = () => {
     return registeredEmails.includes(email.toLowerCase());
   };
 
+  // LOCAL-ONLY TAP
   const handleTap = async (): Promise<void> => {
-    if (!studentId.trim() || isProcessingRef.current) {
-      return;
-    }
+    if (!studentId.trim() || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE_URL}/tap`, {
+      const res = await fetch(`${API_BASE_URL}/student-info`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: studentId.trim() }),
       });
 
-      const data: ApiResponse = await res.json();
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Student not found");
+      }
 
-      if (!res.ok) throw new Error(data.error || "Failed to tap student");
-
-      const displayName = data.name;
+      const data: ApiStudentInfo = await res.json();
       const isRegistered = checkIfRegistered(data.email);
 
-      setRecentTap({
-        name: displayName,
-        id: studentId,
-        timestamp: new Date(),
-        isRegistered,
-      });
-
       const newStudent: Student = {
-        id: studentId,
-        name: displayName,
+        id: studentId.trim(),
+        name: data.name,
         email: data.email,
         timestamp: new Date(),
         isRegistered,
       };
 
-      setTappedStudents([newStudent, ...tappedStudents]);
+      setTappedStudents((prev) => [newStudent, ...prev]);
+
+      setRecentTap({
+        name: data.name,
+        id: studentId.trim(),
+        timestamp: new Date(),
+        isRegistered,
+      });
+
       setStudentId("");
 
-      setTimeout(() => {
-        setRecentTap(null);
-      }, 1500);
+      setTimeout(() => setRecentTap(null), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -157,30 +153,19 @@ const Attendance: React.FC = () => {
     }
   };
 
+  // LOCAL-ONLY NEW EVENT
   const handleNewEvent = (): void => {
     setNewEventName(eventName);
     setShowEventModal(true);
   };
 
-  const confirmNewEvent = async (): Promise<void> => {
+  const confirmNewEvent = (): void => {
     if (newEventName.trim()) {
-      try {
-        const response = await fetch(`${API_BASE_URL}/event`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newEventName.trim() }),
-        });
-
-        if (response.ok) {
-          setEventName(newEventName.trim());
-          setTappedStudents([]);
-          setRegisteredEmails([]);
-          setShowEventModal(false);
-          setNewEventName("");
-        }
-      } catch (err) {
-        console.error("Failed to set event name:", err);
-      }
+      setEventName(newEventName.trim());
+      setTappedStudents([]);
+      setRegisteredEmails([]);
+      setShowEventModal(false);
+      setNewEventName("");
     }
   };
 
@@ -189,67 +174,85 @@ const Attendance: React.FC = () => {
     setNewEventName("");
   };
 
- const handleCsvImport = (event: React.ChangeEvent<HTMLInputElement>): void => {
-   const file = event.target.files?.[0];
-   if (!file) return;
+  // LOCAL-ONLY CSV IMPORT
+  const handleCsvImport = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ): void => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-   const reader = new FileReader();
-   reader.onload = async (e) => {
-     try {
-       const csvText = e.target?.result as string;
-       const lines = csvText.split("\n");
-       const importedEmails: string[] = [];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csvText = e.target?.result as string;
+        const lines = csvText.split("\n");
+        const importedEmails: string[] = [];
 
-       for (let i = 1; i < lines.length; i++) {
-         const line = lines[i].trim();
-         if (!line) continue;
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
 
-         const columns = line.split(",").map((col) => col.trim());
-         if (columns.length >= 2 && columns[1]) {
-           const email = columns[1].toLowerCase();
-           if (email.includes("@") && !importedEmails.includes(email)) {
-             importedEmails.push(email);
-           }
-         }
-       }
+          const columns = line.split(",").map((col) => col.trim());
+          if (columns.length >= 2 && columns[1]) {
+            const email = columns[1].toLowerCase();
+            if (email.includes("@") && !importedEmails.includes(email)) {
+              importedEmails.push(email);
+            }
+          }
+        }
 
-       setRegisteredEmails(importedEmails);
+        setRegisteredEmails(importedEmails);
+        setShowImportModal(false);
 
-       try {
-         const response = await fetch(`${API_BASE_URL}/import-registered`, {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({ emails: importedEmails }),
-         });
+        // Update existing students' registration status
+        setTappedStudents((prev) =>
+          prev.map((student) => ({
+            ...student,
+            isRegistered: checkIfRegistered(student.email),
+          }))
+        );
 
-         if (!response.ok) {
-           throw new Error("Failed to sync with server");
-         }
-       } catch (err) {
-         console.error("Failed to sync registered students with server:", err);
-       }
+        alert(
+          `Successfully imported ${importedEmails.length} registered emails`
+        );
+      } catch (error) {
+        alert("Error parsing CSV file. Please check the format.");
+        console.error("CSV parsing error:", error);
+      }
+    };
 
-       setShowImportModal(false);
+    reader.readAsText(file);
+    event.target.value = "";
+  };
 
-       setTappedStudents((prev) =>
-         prev.map((student) => ({
-           ...student,
-           isRegistered: checkIfRegistered(student.email),
-         }))
-       );
+  // LOCAL CSV EXPORT
+  const handleExport = () => {
+    if (tappedStudents.length === 0) {
+      alert("No attendance data to export.");
+      return;
+    }
 
-       alert(
-         `Successfully imported ${importedEmails.length} registered emails`
-       );
-     } catch (error) {
-       alert("Error parsing CSV file. Please check the format.");
-       console.error("CSV parsing error:", error);
-     }
-   };
+    const headers = ["Student ID", "Name", "Email", "Timestamp", "Status"];
+    const rows = tappedStudents.map((s) => [
+      s.id,
+      s.name,
+      s.email,
+      s.timestamp.toISOString(),
+      s.isRegistered ? "Registered" : "Walk-in",
+    ]);
 
-   reader.readAsText(file);
-   event.target.value = "";
- };
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${eventName.replace(
+      /[^a-z0-9]/gi,
+      "_"
+    )}_attendance_${deviceId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === "Enter") {
@@ -269,24 +272,25 @@ const Attendance: React.FC = () => {
 
   return (
     <div className="relative min-h-screen w-full p-2 mx-auto bg-[#141414]">
-      <h1 className="mx-auto text-center text-3xl text-light-green font-bold mt-4 ">
+      <h1 className="mx-auto text-center text-3xl text-light-green font-bold mt-4">
         {eventName}
       </h1>
+      <p className="text-center text-xs text-gray-500 mb-2">
+        Device: {deviceId}
+      </p>
 
       <div className="text-center mb-4 text-slate-50 font-bold">
         <h1>
-          <span className="text-green-400 ">JPCS</span> Attendance
+          <span className="text-green-400">JPCS</span> Attendance
         </h1>
       </div>
 
-      <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 w-[90%]  max-w-6xl mx-auto z-10 py-2">
+      <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 w-[90%] max-w-6xl mx-auto z-10 py-2">
         {/* Left Column - Tap Interface */}
         <div className="bg-[#0f0f0f] backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg min-h-[500px] flex flex-col items-center justify-center md:col-span-1 gap-3">
           {recentTap ? (
             <div className="text-center animate-pulse">
-              <div
-                className={`w-16 h-16 mx-auto mb-3 bg-light-green rounded-full flex items-center justify-center`}
-              >
+              <div className="w-16 h-16 mx-auto mb-3 bg-light-green rounded-full flex items-center justify-center">
                 <svg
                   className="w-8 h-8 text-white"
                   fill="none"
@@ -405,7 +409,7 @@ const Attendance: React.FC = () => {
             <h2 className="text-lg font-bold text-white">
               Attendance List ({tappedStudents.length})
             </h2>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={handleNewEvent}
                 className="text-[12px] px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-2xl transition-colors duration-200 flex items-center"
@@ -448,7 +452,7 @@ const Attendance: React.FC = () => {
 
               {tappedStudents.length > 0 && (
                 <button
-                  onClick={() => window.open(`${API_BASE_URL}/export`)}
+                  onClick={handleExport}
                   className="text-[12px] px-4 py-1.5 bg-white/10 border border-light-green hover:bg-white/5 text-light-green font-medium rounded-2xl transition-colors duration-200 flex items-center"
                 >
                   <svg
@@ -495,7 +499,7 @@ const Attendance: React.FC = () => {
               {tappedStudents.map((student) => (
                 <div
                   key={`${student.id}-${student.timestamp.getTime()}`}
-                  className={`bg-gray-800/50 border rounded-lg p-4 hover:border-light-green/40 transition-colors duration-200 border-light-green/50`}
+                  className="bg-gray-800/50 border rounded-lg p-4 hover:border-light-green/40 transition-colors duration-200 border-light-green/50"
                 >
                   <div className="flex justify-between items-start">
                     <div>

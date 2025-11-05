@@ -2,151 +2,67 @@ const express = require("express");
 const cors = require("cors");
 const { fetchStudentInfo } = require("./src/portalClient");
 const { deriveDisplayName } = require("./src/username");
-const fs = require("fs");
-const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-let tappedStudents = [];
-let eventName = "Event";
-let registeredStudents = [];
-
-app.post("/api/event", (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Event name required" });
-
-  eventName = name;
-  tappedStudents = []; 
-  registeredStudents = [];
-
-  res.json({ message: `Event name set to: ${name}` });
-});
-
-app.get("/api/event", (req, res) => {
-  res.json({ eventName });
-});
-
-app.get("/api/registered-students", (req, res) => {
-  res.json(registeredStudents);
-});
-
-app.post("/api/import-registered", (req, res) => {
-  const { students } = req.body;
-  if (!students || !Array.isArray(students)) {
-    return res.status(400).json({ error: "Students array required" });
-  }
-
-  registeredStudents = students;
+// Health check
+app.get("/", (req, res) => {
   res.json({
-    message: `Imported ${students.length} registered students`,
-    count: students.length,
+    status: "OK",
+    message: "JPCS Attendance Server (Student Info Only)",
+    timestamp: new Date().toISOString(),
   });
 });
 
-app.post("/api/tap", async (req, res) => {
+// === FETCH STUDENT INFO ONLY ===
+app.post("/api/student-info", async (req, res) => {
   const { studentId } = req.body;
-  if (!studentId) return res.status(400).json({ error: "studentId required" });
+
+  if (!studentId || typeof studentId !== "string") {
+    return res.status(400).json({ error: "Valid studentId required" });
+  }
 
   try {
-    const studentInfo = await fetchStudentInfo(studentId);
-    if (!studentInfo)
-      return res.status(404).json({ error: "Student not registered" });
+    const studentInfo = await fetchStudentInfo(studentId.trim());
 
-    let studentData = tappedStudents.find((s) => s.email === studentInfo.email);
-
-    if (!studentData) {
-      const displayName = deriveDisplayName(studentInfo.email);
-
-      const isRegistered = registeredStudents.some(
-        (regStudent) => regStudent.email === studentInfo.email
-      );
-
-      studentData = {
-        id: studentId,
-        name: displayName,
-        email: studentInfo.email,
-        timestamp: new Date(),
-        isRegistered,
-      };
-      tappedStudents.push(studentData);
+    if (!studentInfo) {
+      return res.status(404).json({ error: "Student not found in portal" });
     }
 
-    res.json(studentData);
+    const displayName = deriveDisplayName(studentInfo.email);
+
+    res.json({
+      id: studentId.trim(),
+      name: displayName,
+      email: studentInfo.email,
+    });
   } catch (err) {
-    console.error("Tap error:", err.message);
-    res.status(500).json({ error: "Failed to fetch student info" });
+    console.error("Student info fetch failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch student data" });
   }
 });
 
-app.get("/api/export", (req, res) => {
-  if (!tappedStudents.length)
-    return res.status(400).json({ error: "No students tapped yet" });
-
-  const csvContent = [
-    ["Student ID", "Email", "Name", "Timestamp", "Status"],
-    ...tappedStudents.map((s) => [
-      s.id,
-      s.email,
-      s.name,
-      s.timestamp.toISOString(),
-      s.isRegistered ? "Registered" : "Walk-in",
-    ]),
-  ]
-    .map((row) => row.join(","))
-    .join("\n");
-
-  const fileName = `${eventName.replace(/[^a-zA-Z0-9]/g, "_")}_attendance.csv`;
-  const filePath = path.join(__dirname, fileName);
-
-  fs.writeFileSync(filePath, csvContent, "utf8");
-
-  res.download(filePath, fileName, (err) => {
-    if (err) console.error(err);
-    setTimeout(() => {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (e) {
-        console.error("Error deleting file:", e);
-      }
-    }, 5000);
+// Optional: Debug endpoint (remove in production)
+app.get("/api/ping", (req, res) => {
+  res.json({
+    message: "Server is alive",
+    time: new Date().toISOString(),
   });
 });
 
-app.get("/api/export-registered", (req, res) => {
-  if (!registeredStudents.length)
-    return res.status(400).json({ error: "No registered students" });
-
-  const csvContent = [
-    ["Student ID", "Email", "Name"],
-    ...registeredStudents.map((s) => [s.id, s.email, s.name || ""]),
-  ]
-    .map((row) => row.join(","))
-    .join("\n");
-
-  const fileName = `${eventName.replace(
-    /[^a-zA-Z0-9]/g,
-    "_"
-  )}_registered_students.csv`;
-  const filePath = path.join(__dirname, fileName);
-
-  fs.writeFileSync(filePath, csvContent, "utf8");
-
-  res.download(filePath, fileName, (err) => {
-    if (err) console.error(err);
-    setTimeout(() => {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (e) {
-        console.error("Error deleting file:", e);
-      }
-    }, 5000);
-  });
+// 404 for any unknown routes
+app.use("*", (req, res) => {
+  res.status(404).json({ error: "Endpoint not found" });
 });
 
-app.listen(PORT, () =>
-  console.log(`Attendance server running on port ${PORT}`)
-);
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`POST /api/student-info → fetch student data`);
+});
