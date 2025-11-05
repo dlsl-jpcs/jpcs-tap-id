@@ -492,7 +492,7 @@ const Attendance: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-green-400/30 scrollbar-track-transparent hover:scrollbar-thumb-green-400/50">
-              {tappedStudents.map((student, index) => (
+              {tappedStudents.map((student) => (
                 <div
                   key={`${student.id}-${student.timestamp.getTime()}`}
                   className={`bg-gray-800/50 border rounded-lg p-4 hover:border-light-green/40 transition-colors duration-200 border-light-green/50`}
