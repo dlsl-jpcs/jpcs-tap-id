@@ -281,7 +281,7 @@ const Attendance: React.FC = () => {
 
       <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 w-[90%]  max-w-6xl mx-auto z-10 py-2">
         {/* Left Column - Tap Interface */}
-        <div className="bg-white/5 backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg min-h-[500px] flex flex-col items-center justify-center md:col-span-1 gap-3">
+        <div className="bg-[#0f0f0f] backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg min-h-[500px] flex flex-col items-center justify-center md:col-span-1 gap-3">
           {recentTap ? (
             <div className="text-center animate-pulse">
               <div
@@ -400,7 +400,7 @@ const Attendance: React.FC = () => {
         </div>
 
         {/* Right Column - Student List */}
-        <div className="bg-white/5 backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg md:col-span-2">
+        <div className="bg-[#0f0f0f] backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg md:col-span-2">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-bold text-white">
               Attendance List ({tappedStudents.length})

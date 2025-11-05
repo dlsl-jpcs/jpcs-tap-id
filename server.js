@@ -87,11 +87,11 @@ app.get("/api/export", (req, res) => {
     return res.status(400).json({ error: "No students tapped yet" });
 
   const csvContent = [
-    ["Student ID", "Name", "Email", "Timestamp", "Status"],
+    ["Student ID", "Email", "Name", "Timestamp", "Status"],
     ...tappedStudents.map((s) => [
       s.id,
-      s.name,
       s.email,
+      s.name,
       s.timestamp.toISOString(),
       s.isRegistered ? "Registered" : "Walk-in",
     ]),
