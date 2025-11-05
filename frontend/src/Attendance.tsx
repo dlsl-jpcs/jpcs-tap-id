@@ -4,7 +4,6 @@ import EventModal from "./EventModal";
 import ImportModal from "./ImportModal";
 
 const API_BASE_URL = "https://jpcs-attendance-server.onrender.com/api";
-/* "http://localhost:10000/api" */
 
 interface Student {
   id: string;
@@ -49,62 +48,73 @@ const Attendance: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isGlobalInputRef = useRef<boolean>(false);
 
-  // Optional: Unique device ID
+  // Device ID
   const [deviceId] = useLocalStorage(
     "device-id",
     `device-${Math.random().toString(36).substr(2, 9)}`
   );
 
+  
+  const nfcBufferRef = useRef<string>("");
+  const nfcTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isManualTypingRef = useRef<boolean>(false);
+
   useEffect(() => {
-    const handleGlobalKeyPress = (e: KeyboardEvent): void => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (
-        isProcessingRef.current ||
         showEventModal ||
         showImportModal ||
-        e.key === "Enter"
+        isProcessingRef.current ||
+        recentTap !== null
       ) {
         return;
       }
 
-      if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
-        isGlobalInputRef.current = true;
+      const isAlphanumeric = e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key);
 
-        if (inputRef.current && document.activeElement !== inputRef.current) {
-          inputRef.current.focus();
+      if (isAlphanumeric) {
+        if (document.activeElement === inputRef.current) {
+          isManualTypingRef.current = true;
+          return; 
         }
 
-        setStudentId((prev) => prev + e.key);
+        // NFC: input not focused → treat as NFC
         e.preventDefault();
+        nfcBufferRef.current += e.key;
+
+        setStudentId(nfcBufferRef.current);
+
+        if (nfcTimerRef.current) clearTimeout(nfcTimerRef.current);
+
+        nfcTimerRef.current = setTimeout(() => {
+          const id = nfcBufferRef.current.trim();
+          if (id.length >= 6) {
+            handleInstantTap(id);
+          }
+          nfcBufferRef.current = "";
+          setStudentId("");
+        }, 75); 
+      }
+
+      if (e.key === "Enter" && document.activeElement === inputRef.current) {
+        const id = studentId.trim();
+        if (id) {
+          handleInstantTap(id);
+          setStudentId("");
+        }
       }
     };
 
-    document.addEventListener("keydown", handleGlobalKeyPress);
-    return () => document.removeEventListener("keydown", handleGlobalKeyPress);
-  }, [showEventModal, showImportModal]);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      if (nfcTimerRef.current) clearTimeout(nfcTimerRef.current);
+    };
+  }, [showEventModal, showImportModal, recentTap, studentId]);
 
-  useEffect(() => {
-    if (isGlobalInputRef.current) {
-      const timer = setTimeout(() => {
-        isGlobalInputRef.current = false;
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [studentId]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    if (isGlobalInputRef.current) return;
-    setStudentId(e.target.value);
-  };
-
-  const checkIfRegistered = (email: string): boolean => {
-    return registeredEmails.includes(email.toLowerCase());
-  };
-
-  // LOCAL-ONLY TAP
-  const handleTap = async (): Promise<void> => {
-    if (!studentId.trim() || isProcessingRef.current) return;
+  const handleInstantTap = async (id: string): Promise<void> => {
+    if (isProcessingRef.current) return;
 
     isProcessingRef.current = true;
     setLoading(true);
@@ -114,7 +124,7 @@ const Attendance: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/student-info`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId: studentId.trim() }),
+        body: JSON.stringify({ studentId: id }),
       });
 
       if (!res.ok) {
@@ -126,7 +136,7 @@ const Attendance: React.FC = () => {
       const isRegistered = checkIfRegistered(data.email);
 
       const newStudent: Student = {
-        id: studentId.trim(),
+        id,
         name: data.name,
         email: data.email,
         timestamp: new Date(),
@@ -134,32 +144,46 @@ const Attendance: React.FC = () => {
       };
 
       setTappedStudents((prev) => [newStudent, ...prev]);
-
       setRecentTap({
         name: data.name,
-        id: studentId.trim(),
+        id,
         timestamp: new Date(),
         isRegistered,
       });
 
-      setStudentId("");
-
       setTimeout(() => setRecentTap(null), 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : "Error");
+      setTimeout(() => setError(""), 3000);
     } finally {
       setLoading(false);
       isProcessingRef.current = false;
+      isManualTypingRef.current = false;
     }
   };
 
-  // LOCAL-ONLY NEW EVENT
-  const handleNewEvent = (): void => {
+  const checkIfRegistered = (email: string): boolean => {
+    return registeredEmails.includes(email.toLowerCase());
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setStudentId(e.target.value);
+    isManualTypingRef.current = true;
+  };
+
+  const handleManualTap = () => {
+    if (studentId.trim() && !isProcessingRef.current) {
+      handleInstantTap(studentId.trim());
+      setStudentId("");
+    }
+  };
+
+  const handleNewEvent = () => {
     setNewEventName(eventName);
     setShowEventModal(true);
   };
 
-  const confirmNewEvent = (): void => {
+  const confirmNewEvent = () => {
     if (newEventName.trim()) {
       setEventName(newEventName.trim());
       setTappedStudents([]);
@@ -169,15 +193,13 @@ const Attendance: React.FC = () => {
     }
   };
 
-  const cancelNewEvent = (): void => {
+  const cancelNewEvent = () => {
     setShowEventModal(false);
     setNewEventName("");
   };
 
-  // LOCAL-ONLY CSV IMPORT
-  const handleCsvImport = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ): void => {
+  // CSV Import
+  const handleCsvImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -191,7 +213,6 @@ const Attendance: React.FC = () => {
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
-
           const columns = line.split(",").map((col) => col.trim());
           if (columns.length >= 2 && columns[1]) {
             const email = columns[1].toLowerCase();
@@ -203,35 +224,27 @@ const Attendance: React.FC = () => {
 
         setRegisteredEmails(importedEmails);
         setShowImportModal(false);
-
-        // Update existing students' registration status
         setTappedStudents((prev) =>
           prev.map((student) => ({
             ...student,
             isRegistered: checkIfRegistered(student.email),
           }))
         );
-
-        alert(
-          `Successfully imported ${importedEmails.length} registered emails`
-        );
+        alert(`Imported ${importedEmails.length} registered emails`);
       } catch (error) {
-        alert("Error parsing CSV file. Please check the format.");
-        console.error("CSV parsing error:", error);
+        alert("Error parsing CSV. Check format.");
       }
     };
-
     reader.readAsText(file);
     event.target.value = "";
   };
 
-  // LOCAL CSV EXPORT
+  // CSV Export
   const handleExport = () => {
-    if (tappedStudents.length === 0) {
-      alert("No attendance data to export.");
+    if (!tappedStudents.length) {
+      alert("No data to export.");
       return;
     }
-
     const headers = ["Student ID", "Name", "Email", "Timestamp", "Status"];
     const rows = tappedStudents.map((s) => [
       s.id,
@@ -240,34 +253,17 @@ const Attendance: React.FC = () => {
       s.timestamp.toISOString(),
       s.isRegistered ? "Registered" : "Walk-in",
     ]);
-
-    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${eventName.replace(
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${eventName.replace(
       /[^a-z0-9]/gi,
       "_"
     )}_attendance_${deviceId}.csv`;
-    link.click();
+    a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === "Enter") {
-      if (showEventModal) {
-        confirmNewEvent();
-      } else {
-        handleTap();
-      }
-    }
-  };
-
-  const handleManualTap = (): void => {
-    if (!isProcessingRef.current) {
-      handleTap();
-    }
   };
 
   return (
@@ -286,7 +282,7 @@ const Attendance: React.FC = () => {
       </div>
 
       <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 w-[90%] max-w-6xl mx-auto z-10 py-2">
-        {/* Left Column - Tap Interface */}
+        {/* Left: Tap Interface */}
         <div className="bg-[#0f0f0f] backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg min-h-[500px] flex flex-col items-center justify-center md:col-span-1 gap-3">
           {recentTap ? (
             <div className="text-center animate-pulse">
@@ -345,7 +341,7 @@ const Attendance: React.FC = () => {
                 Tap Your ID
               </h2>
               <p className="text-gray-400 text-center mb-4 text-sm">
-                Tap your ID or Enter student ID to mark your attendance
+                Tap card or type ID manually
               </p>
 
               <div className="w-full max-w-xs space-y-3">
@@ -354,7 +350,6 @@ const Attendance: React.FC = () => {
                   type="text"
                   value={studentId}
                   onChange={handleInputChange}
-                  onKeyPress={handleKeyPress}
                   placeholder="Enter Student ID"
                   className="w-full px-3 py-2 bg-gray-800 border border-green-400/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 text-sm"
                   disabled={loading}
@@ -362,7 +357,7 @@ const Attendance: React.FC = () => {
 
                 <button
                   onClick={handleManualTap}
-                  disabled={loading}
+                  disabled={loading || !studentId.trim()}
                   className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-semibold rounded-2xl transition-colors duration-200 flex items-center justify-center text-sm"
                 >
                   {loading ? (
@@ -403,7 +398,7 @@ const Attendance: React.FC = () => {
           )}
         </div>
 
-        {/* Right Column - Student List */}
+        {/* Right: Attendance List */}
         <div className="bg-[#0f0f0f] backdrop-blur-md border border-green-400/50 p-6 rounded-xl shadow-lg md:col-span-2">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-bold text-white">
@@ -476,22 +471,9 @@ const Attendance: React.FC = () => {
 
           {tappedStudents.length === 0 ? (
             <div className="text-center text-gray-400 py-12">
-              <svg
-                className="w-16 h-16 mx-auto mb-4 text-gray-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
               <p>No students have tapped in yet</p>
               <p className="text-sm text-gray-500 mt-2">
-                Start a new event by tapping student IDs
+                Start by tapping or typing an ID
               </p>
             </div>
           ) : (
@@ -548,7 +530,7 @@ const Attendance: React.FC = () => {
         setNewEventName={setNewEventName}
         onConfirm={confirmNewEvent}
         onCancel={cancelNewEvent}
-        onKeyPress={handleKeyPress}
+        onKeyPress={(e) => e.key === "Enter" && confirmNewEvent()}
       />
 
       <ImportModal
