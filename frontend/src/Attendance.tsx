@@ -111,7 +111,7 @@ const Attendance: React.FC = () => {
       document.removeEventListener("keydown", handleKeyDown, true);
       if (nfcTimerRef.current) clearTimeout(nfcTimerRef.current);
     };
-  }, [showEventModal, showImportModal, recentTap, studentId]);
+  }, [showEventModal, showImportModal, recentTap]);
 
   const handleInstantTap = async (id: string): Promise<void> => {
     if (isProcessingRef.current) return;
